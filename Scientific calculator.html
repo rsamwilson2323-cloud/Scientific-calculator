@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vivid Calc — Fixed Eval</title>
+<style>
+  :root{
+    --bg1:#ff9a9e;
+    --bg2:#fad0c4;
+    --panel:#ffffffdd;
+    --accent:#6a11cb;
+    --accent2:#2575fc;
+    --btn-radius:14px;
+    --gap:12px;
+    --btn-size:68px;
+    font-family:Inter,system-ui,Arial;
+  }
+  html,body{height:100%;margin:0;background:linear-gradient(140deg,var(--bg1),var(--bg2));-webkit-font-smoothing:antialiased;}
+  .wrap{min-height:100%;display:flex;align-items:flex-end;justify-content:center;padding:20px;}
+  .calc{width:100%;max-width:430px;background:#ffffffcc;padding:16px;border-radius:26px;backdrop-filter:blur(10px);box-shadow:0 12px 30px #0003;}
+  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .brand{font-weight:700;font-size:18px;color:#333;}
+  .controls{display:flex;gap:8px;align-items:center;}
+  .history-btn{padding:6px 12px;border-radius:10px;background:linear-gradient(180deg,var(--accent),var(--accent2));color:white;border:none;font-weight:600;}
+  .sci-toggle{padding:6px 10px;border-radius:10px;background:#fff;color:#333;border:1px solid #eee;font-weight:700;}
+  .display{background:linear-gradient(#ffffffdd,#fafafa);padding:14px;border-radius:16px;margin-bottom:14px;min-height:86px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;border:1px solid #ffffff99;}
+  .expr{opacity:0.75;font-size:14px;width:100%;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .value{font-size:36px;font-weight:700;width:100%;text-align:right;word-break:break-all;}
+  /* pad grid */
+  .pad{display:grid;gap:var(--gap);grid-template-columns:repeat(4,1fr);}
+  button.key{height:var(--btn-size);border:none;border-radius:var(--btn-radius);font-size:18px;font-weight:700;box-shadow:0 6px 10px #0002;touch-action:manipulation;}
+  /* color scheme (mixed as requested) */
+  .btn-fn{background:#ffd8e6;color:#4b0b25;}
+  .btn-op{background:linear-gradient(180deg,#ff9ac1,#ff6fa8);color:white;}
+  .btn-num{background:#ebeaf0;color:#0b0b0b;font-weight:700;}
+  .btn-const{background:#ffffff;color:#222;border:1px solid #eee;}
+  .btn-alt{background:#fff5d6;color:#7a5600;}
+  .btn-ac{background:#c9f7d9;color:#02531f;}
+  .btn-eq{background:linear-gradient(180deg,#00c6ff,#0072ff);color:white;font-size:20px;}
+  .btn-zero{grid-column:span 2;}
+  .sci-panel{height:0;overflow:hidden;transition:height .32s ease;padding:0 0; margin-bottom:12px;}
+  .sci-panel.open{height:280px;padding-bottom:12px;}
+  .sci-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:6px;}
+  .history-panel{position:fixed;bottom:-100%;left:0;right:0;height:60%;background:var(--panel);backdrop-filter:blur(8px);border-radius:20px 20px 0 0;padding:16px;box-shadow:0 -10px 30px #0003;transition:0.35s ease;overflow-y:auto;}
+  .history-panel.open{bottom:0;}
+  .history-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .history-entry{padding:10px 0;border-bottom:1px solid #0001;font-size:16px;}
+  .small{font-size:12px;opacity:0.8;}
+  @media (max-width:360px){:root{--btn-size:62px;} .value{font-size:30px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="calc">
+
+    <div class="top">
+      <div class="brand">Vivid Calc</div>
+      <div class="controls">
+        <button id="showHistory" class="history-btn key">History</button>
+        <button id="toggleSci" class="sci-toggle key">Sci</button>
+      </div>
+    </div>
+
+    <div id="sciPanel" class="sci-panel" aria-hidden="true">
+      <div class="sci-grid" id="sciGridTop">
+        <button class="key btn-fn" data-fn="sqrt">√</button>
+        <button class="key btn-const" data-const="pi">π</button>
+        <button class="key btn-fn" data-act="pow">^</button>
+        <button class="key btn-fn" data-fn="fact">!</button>
+      </div>
+
+      <div class="sci-grid" id="sciGridMid">
+        <button class="key btn-alt" id="degToggle">Deg</button>
+        <button class="key btn-fn" data-fn="sin">sin</button>
+        <button class="key btn-fn" data-fn="cos">cos</button>
+        <button class="key btn-fn" data-fn="tan">tan</button>
+      </div>
+
+      <div class="sci-grid" id="sciGridMid2">
+        <button class="key btn-alt" id="invToggle">Inv</button>
+        <button class="key btn-const" data-const="e">e</button>
+        <button class="key btn-fn" data-fn="ln">ln</button>
+        <button class="key btn-fn" data-fn="log">log</button>
+      </div>
+
+      <div class="sci-grid" id="sciGridBottom">
+        <button class="key btn-fn" data-act="paren">(</button>
+        <button class="key btn-fn" data-act="paren">)</button>
+        <div></div><div></div>
+      </div>
+    </div>
+
+    <div class="display" role="region" aria-live="polite">
+      <div class="expr small" id="expr">&nbsp;</div>
+      <div class="value" id="val">0</div>
+    </div>
+
+    <div class="pad" id="pad">
+      <button class="key btn-ac" data-act="ac">AC</button>
+      <button class="key btn-fn" data-act="back">⌫</button>
+      <button class="key btn-alt" data-act="percent">%</button>
+      <button class="key btn-op" data-act="op">÷</button>
+
+      <button class="key btn-num" data-num="7">7</button>
+      <button class="key btn-num" data-num="8">8</button>
+      <button class="key btn-num" data-num="9">9</button>
+      <button class="key btn-op" data-act="op">×</button>
+
+      <button class="key btn-num" data-num="4">4</button>
+      <button class="key btn-num" data-num="5">5</button>
+      <button class="key btn-num" data-num="6">6</button>
+      <button class="key btn-op" data-act="op">−</button>
+
+      <button class="key btn-num" data-num="1">1</button>
+      <button class="key btn-num" data-num="2">2</button>
+      <button class="key btn-num" data-num="3">3</button>
+      <button class="key btn-op" data-act="op">+</button>
+
+      <button class="key btn-num btn-zero" data-num="0">0</button>
+      <button class="key btn-num" data-num=".">.</button>
+      <button class="key btn-eq" data-act="eq">=</button>
+    </div>
+
+  </div>
+</div>
+
+<div class="history-panel" id="historyPanel" aria-hidden="true">
+  <div class="history-header">
+    <div style="font-weight:700">History</div>
+    <div>
+      <button id="clearHistory" class="key small" style="padding:6px 8px;border-radius:8px;background:#fff;border:1px solid #eee;">Clear</button>
+      <button id="closeHistory" class="key small" style="padding:6px 8px;border-radius:8px;background:none;border:none;">Close</button>
+    </div>
+  </div>
+  <div id="historyList"></div>
+</div>
+
+<script>
+/* ---------- State ---------- */
+const exprEl = document.getElementById('expr');
+const valEl = document.getElementById('val');
+const sciPanel = document.getElementById('sciPanel');
+const pad = document.getElementById('pad');
+const historyPanel = document.getElementById('historyPanel');
+const historyList = document.getElementById('historyList');
+
+let exprStr = '';         // expression using display symbols (e.g. "5 ÷")
+let current = '0';        // current token
+let resultShown = false;
+
+let degMode = true;
+let invMode = false;
+let history = [];
+
+/* ---------- Utilities ---------- */
+function updateDisplay(){
+  valEl.textContent = current;
+  exprEl.textContent = exprStr ? exprStr : '\xa0';
+}
+
+function addHistory(text){
+  history.unshift(text);
+  const d = document.createElement('div');
+  d.className = 'history-entry';
+  d.textContent = text;
+  historyList.prepend(d);
+}
+function clearHistory(){ history = []; historyList.innerHTML = ''; }
+
+/* factorial */
+function factorial(n){
+  n = Math.floor(n);
+  if(n < 0) return NaN;
+  if(n === 0 || n === 1) return 1;
+  let r = 1;
+  for(let i=2;i<=n;i++) r *= i;
+  return r;
+}
+
+/* ---------- Tokenizer & Parser (Shunting-yard) ---------- */
+
+/* Convert display symbols to token friendly forms when tokenizing */
+function symbolToTokenChar(ch){
+  if(ch === '÷') return '/';
+  if(ch === '×') return '*';
+  if(ch === '−') return '-';
+  return ch;
+}
+
+/* tokenize a display expression string (exprStr + ' ' + current) into tokens */
+function tokenize(displayExpr){
+  // Replace π and e tokens with identifiers 'pi'/'e'
+  // Keep function names intact like sin(, ln(, etc.
+  const s = displayExpr.replace(/π/g,'pi').replace(/\be\b/g,'e');
+  const tokens = [];
+  let i = 0;
+
+  while(i < s.length){
+    const ch = s[i];
+
+    // skip spaces
+    if(/\s/.test(ch)){ i++; continue; }
+
+    // numbers (including decimal)
+    if(/[0-9.]/.test(ch)){
+      let j = i;
+      while(j < s.length && /[0-9.]/.test(s[j])) j++;
+      tokens.push(s.slice(i,j));
+      i = j;
+      continue;
+    }
+
+    // identifiers (functions/constants)
+    if(/[a-zA-Z]/.test(ch)){
+      let j = i;
+      while(j < s.length && /[a-zA-Z]/.test(s[j])) j++;
+      const id = s.slice(i,j);
+      tokens.push(id);
+      i = j;
+      continue;
+    }
+
+    // multi-char operator? (handle '^' and '!')
+    if(ch === '^' || ch === '!' || ch === '(' || ch === ')'){
+      tokens.push(ch);
+      i++; continue;
+    }
+
+    // display op symbols or ascii operators
+    // map display operator to token
+    const mapped = symbolToTokenChar(ch);
+    if(['+','-','*','/','%'].includes(mapped)){
+      tokens.push(mapped);
+      i++; continue;
+    }
+
+    // fallback single char
+    tokens.push(ch);
+    i++;
+  }
+
+  return tokens;
+}
+
+/* operator precedence & associativity */
+const ops = {
+  '+' : {prec: 2, assoc: 'L', arity:2, fn:(a,b)=>a+b},
+  '-' : {prec: 2, assoc: 'L', arity:2, fn:(a,b)=>a-b},
+  '*' : {prec: 3, assoc: 'L', arity:2, fn:(a,b)=>a*b},
+  '/' : {prec: 3, assoc: 'L', arity:2, fn:(a,b)=>a/b},
+  '^' : {prec: 4, assoc: 'R', arity:2, fn:(a,b)=>Math.pow(a,b)},
+  '%' : {prec: 3, assoc: 'L', arity:1, fn:null}, // % handled as unary transform earlier
+  '!' : {prec: 5, assoc: 'L', arity:1, fn:null} // factorial postfix
+};
+
+/* is token a function name? */
+function isFunctionToken(t){
+  const fs = ['sin','cos','tan','asin','acos','atan','ln','log','sqrt'];
+  return fs.includes(t);
+}
+
+/* Convert tokens to RPN using shunting-yard */
+function toRPN(tokens){
+  const out = [];
+  const stack = [];
+
+  for(let i=0;i<tokens.length;i++){
+    const t = tokens[i];
+
+    if(!isNaN(t)){ // number
+      out.push({type:'number', value: parseFloat(t)});
+      continue;
+    }
+
+    if(t === 'pi'){
+      out.push({type:'number', value: Math.PI});
+      continue;
+    }
+    if(t === 'e'){
+      out.push({type:'number', value: Math.E});
+      continue;
+    }
+
+    if(isFunctionToken(t)){
+      stack.push({type:'func', value:t});
+      continue;
+    }
+
+    if(t === ','){
+      // function argument separator - pop operators until left parenthesis
+      while(stack.length && stack[stack.length-1].value !== '('){
+        out.push(stack.pop());
+      }
+      continue;
+    }
+
+    if(t === '('){
+      stack.push({type:'paren', value:'('});
+      continue;
+    }
+
+    if(t === ')'){
+      // pop until '('
+      while(stack.length && stack[stack.length-1].value !== '('){
+        out.push(stack.pop());
+      }
+      if(stack.length === 0) throw new Error('Mismatched parentheses');
+      stack.pop(); // remove '('
+      // if the top is a function, pop it to output
+      if(stack.length && stack[stack.length-1].type === 'func'){
+        out.push(stack.pop());
+      }
+      continue;
+    }
+
+    // operators
+    if(Object.prototype.hasOwnProperty.call(ops, t) || t === '!'){
+      // handle unary minus: if token is '-' and previous token is operator or start, treat as unary
+      // We'll represent unary minus as 'u-' with higher precedence
+      let opToken = t;
+      if(t === '-' ){
+        // check previous token
+        const prev = tokens[i-1];
+        if(i === 0 || (typeof prev === 'string' && (prev === '(' || Object.prototype.hasOwnProperty.call(ops, prev) || isFunctionToken(prev)))){
+          opToken = 'u-';
+          ops['u-'] = {prec:5, assoc:'R', arity:1, fn:(a)=> -a};
+        }
+      }
+
+      while(stack.length){
+        const top = stack[stack.length-1].value;
+        if(Object.prototype.hasOwnProperty.call(ops, top)){
+          const o1 = ops[opToken];
+          const o2 = ops[top];
+          if(!o1) break;
+          if( (o1.assoc === 'L' && o1.prec <= o2.prec) || (o1.assoc === 'R' && o1.prec < o2.prec) ){
+            out.push(stack.pop());
+            continue;
+          }
+        }
+        break;
+      }
+      stack.push({type:'op', value:opToken});
+      continue;
+    }
+
+    // postfix factorial '!' handled as token earlier
+    if(t === '!'){
+      // push factorial operator (postfix)
+      stack.push({type:'op', value:'!'});
+      continue;
+    }
+
+    // unknown token -> try to handle as variable/ident
+    if(typeof t === 'string'){
+      // may be like "sin(30)" already tokenized differently; otherwise error
+      throw new Error('Unknown token: ' + t);
+    }
+  }
+
+  while(stack.length){
+    const s = stack.pop();
+    if(s.value === '(' || s.value === ')') throw new Error('Mismatched parentheses');
+    out.push(s);
+  }
+
+  return out;
+}
+
+/* Evaluate RPN */
+function evalRPN(rpn){
+  const st = [];
+  for(const token of rpn){
+    if(token.type === 'number'){ st.push(token.value); continue; }
+    if(token.type === 'func'){
+      const fn = token.value;
+      const a = st.pop();
+      if(a === undefined) throw new Error('Invalid expression');
+      let res;
+      if(fn === 'sin' || fn === 'cos' || fn === 'tan'){
+        let x = a;
+        if(degMode && !invMode && (fn === 'sin' || fn === 'cos' || fn === 'tan')) x = x * Math.PI / 180;
+        if(invMode){
+          if(fn === 'sin') res = degMode ? Math.asin(a) * 180/Math.PI : Math.asin(a);
+          if(fn === 'cos') res = degMode ? Math.acos(a) * 180/Math.PI : Math.acos(a);
+          if(fn === 'tan') res = degMode ? Math.atan(a) * 180/Math.PI : Math.atan(a);
+        } else {
+          if(fn === 'sin') res = Math.sin(x);
+          if(fn === 'cos') res = Math.cos(x);
+          if(fn === 'tan') res = Math.tan(x);
+        }
+      } else if(fn === 'asin' || fn === 'acos' || fn === 'atan'){
+        if(fn === 'asin') res = Math.asin(a);
+        if(fn === 'acos') res = Math.acos(a);
+        if(fn === 'atan') res = Math.atan(a);
+        if(degMode) res = res * 180 / Math.PI;
+      } else if(fn === 'ln'){ res = Math.log(a); }
+      else if(fn === 'log'){ res = Math.log10 ? Math.log10(a) : Math.log(a)/Math.LN10; }
+      else if(fn === 'sqrt'){ res = Math.sqrt(a); }
+      else res = a;
+      if(!isFinite(res)) throw new Error('Math error');
+      st.push(res);
+      continue;
+    }
+    if(token.type === 'op'){
+      const op = token.value;
+      if(op === '!'){ const a = st.pop(); if(a === undefined) throw new Error('Invalid'); st.push(factorial(a)); continue; }
+      if(op === 'u-'){ const a = st.pop(); if(a === undefined) throw new Error('Invalid'); st.push(-a); continue; }
+      const o = ops[op];
+      if(!o) throw new Error('Unknown op ' + op);
+      if(o.arity === 1){
+        const a = st.pop(); if(a === undefined) throw new Error('Invalid'); if(op === '%'){ st.push(a/100); } else st.push(o.fn(a)); continue;
+      } else {
+        const b = st.pop(); const a = st.pop();
+        if(a === undefined || b === undefined) throw new Error('Invalid');
+        if(op === '/' && b === 0) throw new Error('Division by zero');
+        st.push(o.fn(a,b));
+      }
+    }
+  }
+  if(st.length !== 1) throw new Error('Invalid expression');
+  return st[0];
+}
+
+/* Build RPN and evaluate safely */
+function safeEvaluate(displayExpr){
+  // tokenization
+  const tokens = tokenize(displayExpr);
+  // Convert percent character token '%' into operator token (we handle as unary postfix)
+  // Note: Our tokenizer will produce '%' only if present; previously percent button transforms current so normally not needed here.
+  // Translate tokens' display operator forms already done in tokenize
+  // Now convert tokens to RPN
+  const rpn = toRPN(tokens);
+  const value = evalRPN(rpn);
+  return value;
+}
+
+/* ---------- Calculator behaviors ---------- */
+
+function doAC(){
+  exprStr = '';
+  current = '0';
+  resultShown = false;
+  updateDisplay();
+}
+
+function doBack(){
+  if(resultShown){
+    current = '0';
+    resultShown = false;
+    updateDisplay();
+    return;
+  }
+  if(current.length > 1) current = current.slice(0,-1);
+  else current = '0';
+  updateDisplay();
+}
+
+function inputNum(n){
+  if(resultShown){
+    current = (n === '.') ? '0.' : n;
+    resultShown = false;
+    updateDisplay();
+    return;
+  }
+  if(n === '.'){
+    if(current.includes('.')) return;
+    current += '.';
+  } else {
+    current = current === '0' ? n : current + n;
+  }
+  updateDisplay();
+}
+
+function pushOperator(sym){
+  // commit current into exprStr with display symbol
+  if(resultShown){
+    exprStr = current + ' ' + sym + ' ';
+  } else {
+    exprStr = (exprStr ? exprStr : '') + (exprStr && exprStr.slice(-1) !== ' ' ? ' ' : '') + current + ' ' + sym + ' ';
+  }
+  current = '0';
+  resultShown = false;
+  updateDisplay();
+}
+
+function insertParen(p){
+  if(p === '('){
+    if(current !== '0'){
+      exprStr = (exprStr ? exprStr : '') + ' ' + current + ' × (';
+      current = '0';
+    } else {
+      exprStr = (exprStr ? exprStr : '') + ' (';
+    }
+  } else {
+    exprStr = (exprStr ? exprStr : '') + ' ' + current + ' )';
+    current = '0';
+  }
+  updateDisplay();
+}
+
+/* percent: behaves like real calculator (when prev op current exists) */
+function doPercent(){
+  // Try to find numeric token before last operator in exprStr
+  const m = exprStr.trim().match(/(.+?)\s+([÷×−\+\^\/\*])\s*$/);
+  if(m){
+    // Extract last numeric token from beginning part
+    const tokens = (exprStr.trim()).split(/\s+/);
+    // find last numeric-like token
+    for(let i=tokens.length-1;i>=0;i--){
+      if(/^[0-9.πe]+$/.test(tokens[i])){
+        let baseToken = tokens[i].replace(/π/g, Math.PI).replace(/\be\b/g, Math.E);
+        const base = parseFloat(baseToken);
+        if(!isNaN(base)){
+          const percentVal = base * (parseFloat(current) / 100.0);
+          current = parseFloat(percentVal.toFixed(12)).toString();
+          updateDisplay();
+          return;
+        }
+      }
+    }
+  }
+  // otherwise simple percent
+  current = (parseFloat(current) / 100).toString();
+  updateDisplay();
+}
+
+/* apply unary functions invoked from buttons */
+function applyFunction(fnName){
+  try {
+    // apply to current value
+    let x = parseFloat(current);
+    if(isNaN(x)) return;
+    let res;
+    if(fnName === 'sqrt') res = Math.sqrt(x);
+    else if(fnName === 'ln') res = Math.log(x);
+    else if(fnName === 'log') res = Math.log10 ? Math.log10(x) : Math.log(x)/Math.LN10;
+    else if(fnName === 'fact') res = factorial(x);
+    else if(fnName === 'sin' || fnName === 'cos' || fnName === 'tan'){
+      if(invMode){
+        if(fnName === 'sin'){ res = Math.asin(x); if(degMode) res = res * 180/Math.PI; }
+        if(fnName === 'cos'){ res = Math.acos(x); if(degMode) res = res * 180/Math.PI; }
+        if(fnName === 'tan'){ res = Math.atan(x); if(degMode) res = res * 180/Math.PI; }
+      } else {
+        let arg = x;
+        if(degMode) arg = x * Math.PI / 180;
+        if(fnName === 'sin') res = Math.sin(arg);
+        if(fnName === 'cos') res = Math.cos(arg);
+        if(fnName === 'tan') res = Math.tan(arg);
+      }
+    } else {
+      res = x;
+    }
+    if(!isFinite(res)) throw new Error('Math error');
+    current = parseFloat(parseFloat(res).toFixed(12)).toString();
+    resultShown = true;
+    updateDisplay();
+  } catch(e){
+    current = 'Error'; updateDisplay();
+  }
+}
+
+function insertConstant(name){
+  if(name === 'pi') current = Math.PI.toString();
+  else if(name === 'e') current = Math.E.toString();
+  resultShown = true;
+  updateDisplay();
+}
+
+/* final evaluate: build display expression (exprStr + ' ' + current), convert display symbols to tokens, evaluate safely */
+function evaluateExpression(){
+  try {
+    const displayExpr = (exprStr ? (exprStr + ' ' + current) : current).trim();
+    // replace display operator symbols with token-friendly forms and prepare string for tokenization
+    // but tokenizer handles π and e
+    // Evaluate using safeEvaluate (tokenize -> RPN -> eval)
+    const v = safeEvaluate(displayExpr);
+    if(!isFinite(v)) throw new Error('Math error');
+    const result = parseFloat(parseFloat(v).toFixed(12)).toString();
+    addHistory(displayExpr + ' = ' + result);
+    exprStr = '';
+    current = result;
+    resultShown = true;
+    updateDisplay();
+  } catch(err){
+    // show Error, DO NOT replace with 0
+    current = 'Error';
+    exprStr = '';
+    resultShown = true;
+    updateDisplay();
+  }
+}
+
+/* ---------- UI event handlers ---------- */
+document.getElementById('toggleSci').addEventListener('click', () => {
+  const open = sciPanel.classList.toggle('open');
+  sciPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+});
+
+document.getElementById('showHistory').addEventListener('click', () => {
+  historyPanel.classList.add('open');
+});
+document.getElementById('closeHistory').addEventListener('click', () => {
+  historyPanel.classList.remove('open');
+});
+document.getElementById('clearHistory').addEventListener('click', clearHistory);
+
+/* Sci panel clicks */
+document.getElementById('sciPanel').addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if(!btn) return;
+  if(btn.dataset.fn){
+    const fn = btn.dataset.fn;
+    if(fn === 'sin' || fn === 'cos' || fn === 'tan'){
+      applyFunction(fn);
+    } else if(fn === 'fact'){ applyFunction('fact'); }
+    else if(fn === 'sqrt'){ applyFunction('sqrt'); }
+    else if(fn === 'ln' || fn === 'log'){ applyFunction(fn); }
+    return;
+  }
+  if(btn.dataset.const){
+    insertConstant(btn.dataset.const);
+    return;
+  }
+  if(btn.id === 'degToggle'){
+    degMode = !degMode;
+    btn.textContent = degMode ? 'Deg' : 'Rad';
+    return;
+  }
+  if(btn.id === 'invToggle'){
+    invMode = !invMode;
+    btn.textContent = invMode ? 'Inv' : 'Inv';
+    return;
+  }
+  if(btn.dataset.act === 'pow'){
+    pushOperator('^');
+    return;
+  }
+  if(btn.dataset.act === 'paren'){
+    insertParen(btn.textContent);
+    return;
+  }
+});
+
+/* Main pad clicks */
+pad.addEventListener('click', (e) => {
+  const btn = e.target.closest('button.key');
+  if(!btn) return;
+  const num = btn.dataset.num;
+  const act = btn.dataset.act;
+
+  if(typeof num !== 'undefined'){
+    inputNum(num); return;
+  }
+  if(act === 'ac'){ doAC(); return; }
+  if(act === 'back'){ doBack(); return; }
+  if(act === 'percent'){ doPercent(); return; }
+  if(act === 'op'){
+    const sym = btn.textContent.trim();
+    pushOperator(sym); return;
+  }
+  if(act === 'eq'){ evaluateExpression(); return; }
+});
+
+/* keyboard support for desktop */
+window.addEventListener('keydown', (e) => {
+  if(/^[0-9]$/.test(e.key)) inputNum(e.key);
+  else if(e.key === '.') inputNum('.');
+  else if(e.key === 'Backspace') doBack();
+  else if(e.key === 'Escape') doAC();
+  else if(e.key === '%') doPercent();
+  else if(['+','-','/','*','^'].includes(e.key)){
+    const map = {'/':'÷','*':'×','-':'−','^':'^','+':'+'};
+    pushOperator(map[e.key] || e.key);
+  } else if(e.key === 'Enter' || e.key === '=') evaluateExpression();
+});
+
+/* init */
+updateDisplay();
+
+</script>
+</body>
+</html>
